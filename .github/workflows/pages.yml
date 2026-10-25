@@ -1,0 +1,52 @@
+name: Build data & deploy to GitHub Pages
+
+# Real data is fetched at build time and never committed. If a source changes its schema the
+# build fails and the previously deployed site stays online (nothing is overwritten).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # Vote Sundays: results appear from noon (CET). Re-build in the afternoon/evening, plus Monday morning.
+    - cron: "15 13,16,19,22 * * 0"
+    - cron: "30 5 * * 1"
+    # Weekly safety net
+    - cron: "30 4 * * 3"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch live data
+        run: python -m pipeline.build live
+      - name: Sanity check
+        run: |
+          python - <<'EOF'
+          import json
+          d = json.load(open("web/data/votes.json"))
+          assert not d["meta"]["demo"], "demo data must never be deployed"
+          assert d["meta"]["voteCount"] > 300, f"suspiciously few votes: {d['meta']['voteCount']}"
+          print(d["meta"])
+          EOF
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4

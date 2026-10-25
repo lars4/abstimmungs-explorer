@@ -1,0 +1,45 @@
+<!-- Portfolio card for xirvik.ch/index.html
+     Paste where the other app cards live. Self-contained: scoped CSS (.ae-card), no dependencies.
+     Live numbers come from /abstimmungen/data/votes.json (same origin); the card degrades
+     gracefully to static text if the file is unavailable. Adjust colours to your page's palette
+     via the --ae-* variables. -->
+<a class="ae-card" href="/abstimmungen/" aria-label="Abstimmungs-Explorer öffnen">
+  <div class="ae-tiles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <h3>Abstimmungs-Explorer</h3>
+  <p>Eidgenössische Abstimmungen nach Kanton &amp; Gemeinde – mit Verlauf über die Zeit. Open Source.</p>
+  <p class="ae-live" id="ae-live">&nbsp;</p>
+  <span class="ae-tags"><b>JavaScript</b><b>Python</b><b>BFS Open Data</b></span>
+  <span class="ae-links">
+    <span>Live ansehen →</span>
+    <span class="ae-gh" onclick="event.preventDefault();event.stopPropagation();window.open('https://github.com/lars4/abstimmungs-explorer','_blank','noopener')">GitHub ↗</span>
+  </span>
+</a>
+<style>
+  .ae-card{--ae-bg:var(--card,#fff);--ae-ink:var(--ink,#1b1b1b);--ae-mut:var(--muted,#6a6a66);--ae-line:var(--line,#e3e1da);--ae-yes:#1b6ca8;--ae-no:#d66e1e;
+    display:block;text-decoration:none;color:var(--ae-ink);background:var(--ae-bg);border:1px solid var(--ae-line);border-radius:14px;padding:18px;transition:transform .15s,box-shadow .15s}
+  .ae-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.12)}
+  .ae-card h3{margin:.6em 0 .3em;font-size:1.1rem}
+  .ae-card p{margin:.2em 0;color:var(--ae-mut);font-size:.92rem;line-height:1.45}
+  .ae-card .ae-live{color:var(--ae-ink);font-weight:600;min-height:1.4em}
+  .ae-tiles{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;height:22px}
+  .ae-tiles i{border-radius:4px;background:var(--ae-yes)}
+  .ae-tiles i:nth-child(2n){background:#9fc2dc}.ae-tiles i:nth-child(3n){background:var(--ae-no)}.ae-tiles i:nth-child(5n){background:#e8c3a2}
+  .ae-tags{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .ae-tags b{font-weight:500;font-size:.75rem;border:1px solid var(--ae-line);border-radius:999px;padding:1px 9px;color:var(--ae-mut)}
+  .ae-links{display:flex;justify-content:space-between;font-size:.88rem;color:var(--ae-yes);font-weight:600}
+  .ae-gh:hover{text-decoration:underline}
+</style>
+<script>
+  // Live numbers: latest vote + count. Fails silently.
+  (async () => {
+    try {
+      const r = await fetch('/abstimmungen/data/votes.json', { cache: 'no-cache' });
+      const { meta, votes } = await r.json();
+      if (meta.demo || !votes.length) return;
+      const v = votes[votes.length - 1];
+      const title = (v.title.de || Object.values(v.title)[0] || '').slice(0, 60);
+      document.getElementById('ae-live').textContent =
+        `${votes.length} Vorlagen · zuletzt ${v.date}: ${v.yes.toFixed(1).replace('.', ',')} % Ja – ${title}`;
+    } catch (e) { /* static fallback */ }
+  })();
+</script>

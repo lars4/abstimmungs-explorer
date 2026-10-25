@@ -1,0 +1,13 @@
+# generated data (built by the pipeline / CI, never committed)
+web/data/
+.cache/
+
+# python / node
+__pycache__/
+*.pyc
+node_modules/
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
