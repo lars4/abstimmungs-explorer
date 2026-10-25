@@ -46,19 +46,21 @@ npm run smoke    # headless-Chromium smoke test + screenshots (needs `playwright
 | SRF | **not used** | I found no documented public data API; scraping a media site would be fragile and legally unclear. PRs welcome if SRF publishes one |
 | Cantonal / communal portals | **planned** | See [docs/ADDING_A_SOURCE.md](docs/ADDING_A_SOURCE.md) – adapters are ~50 lines each. Cantonal proposals have a separate opendata.swiss real-time dataset |
 
-### Status – please read
+### Status
 
-The fetchers are written against the documented PxWeb / json-stat2 and real-time JSON schemas and are covered by offline
-tests with hand-written fixtures. They were **not yet run against the live servers** (the environment this was built in had no
-outbound access to BFS). The first live run may therefore need a small tweak:
+The BFS table layouts (variables `Kanton`, `Datum und Vorlage`, `Ergebnis`, and the combined
+`Kanton (-) / Bezirk (>>) / Gemeinde (......)` variable) were checked against the live tables with `pipeline.build inspect`,
+and the loaders are tested offline with fixtures in that exact layout. The optional gap-fill from the opendata.swiss
+real-time dataset is the least-verified part; if it fails, the build prints a warning and continues with the PxWeb data.
+
+If BFS renames a variable, the pipeline stops with a message instead of writing partial data:
 
 ```bash
 python3 -m pipeline.build inspect                  # print the variables BFS actually exposes
-python3 -m pipeline.build live --map vote=Vorlage --map canton=Kanton --map measure=Ergebnis
+python3 -m pipeline.build live --map vote="Datum und Vorlage" --map measure=Ergebnis
 ```
 
-The pipeline fails loudly (non-zero exit, helpful message) rather than writing partial data, and the deploy workflow refuses to
-publish demo data or suspiciously small datasets.
+The deploy workflow refuses to publish demo data or a suspiciously small dataset.
 
 ## How it works
 

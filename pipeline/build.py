@@ -47,7 +47,8 @@ def main(argv=None) -> int:
             meta = bfs_px.fetch_table_meta(t)
             print(f"== {t}: {meta.get('title')}")
             for v in meta["variables"]:
-                print(f"  {v['code']!r:28} {v['text']!r:34} {len(v['values'])} values; e.g. {v['valueTexts'][:3]}")
+                print(f"  {v['code']!r:28} {v['text']!r:34} {len(v['values'])} values; "
+                      + (f"all: {v['valueTexts']}" if len(v['values']) <= 12 else f"e.g. {v['valueTexts'][:3]}"))
         return 0
 
     store = Store()
@@ -62,8 +63,11 @@ def main(argv=None) -> int:
             bfs_px.load_municipalities(store, args.max_cells, args.muni_since, override)
         if not args.no_voteinfo:
             print("opendata.swiss latest votes …", file=sys.stderr)
-            n = voteinfo.load_missing(store, municipalities=not args.no_municipalities)
-            print(f"  added {n} proposals", file=sys.stderr)
+            try:
+                n = voteinfo.load_missing(store, municipalities=not args.no_municipalities)
+                print(f"  added {n} proposals", file=sys.stderr)
+            except Exception as e:  # optional step: the BFS PxWeb tables already hold the history
+                print(f"  WARNING: latest-vote gap fill skipped ({type(e).__name__}: {e})", file=sys.stderr)
         if not store.votes:
             print("No votes loaded - aborting without overwriting data.", file=sys.stderr)
             return 1

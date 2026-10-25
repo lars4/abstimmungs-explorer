@@ -3,10 +3,12 @@
 The fixtures are NOT real data; they only pin down the parsing logic. Real-source drift is
 caught by the weekly `update-data` workflow, which fails loudly instead of overwriting data.
 """
+import itertools
 import json
 import pathlib
 import tempfile
 import unittest
+from unittest import mock
 
 from pipeline import bfs_px, demo, voteinfo
 from pipeline.common import canton_code, is_national
@@ -112,6 +114,102 @@ class VoteInfo(unittest.TestCase):
         self.assertEqual(voteinfo.resource_date({"url": "https://x/sd-t-17-02-20240303-eidgAbstimmung.json"}), "2024-03-03")
         self.assertEqual(voteinfo.resource_date({"name": "Abstimmung vom 03.03.2024"}), "2024-03-03")
         self.assertIsNone(voteinfo.resource_date({"url": "https://x/foo.json"}))
+
+
+# --- fixtures shaped like the REAL BFS tables (variable names/labels taken from `pipeline.build inspect`) ---
+MEASURES = ["Stimmberechtigte", "Abgegebene Stimmen", "Beteiligung in %", "Ja", "Nein", "Ja in %", "Nein in %"]
+VOTES = ["2026-06-14 Volksinitiative «Beispiel A»", "2026-06-14 Änderung des Beispielgesetzes", "2023-06-18 Klimagesetz"]
+REAL_CANTON_META = {"title": "Volksabstimmungen (Ergebnisse Ebene Kanton seit 1866)", "variables": [
+    {"code": "Kanton", "text": "Kanton", "values": ["0", "1", "2", "10", "18"],
+     "valueTexts": ["Schweiz", "Zürich", "Bern / Berne", "Freiburg / Fribourg", "Graubünden / Grigioni / Grischun"]},
+    {"code": "Datum und Vorlage", "text": "Datum und Vorlage", "values": ["v1", "v2", "v3"], "valueTexts": VOTES},
+    {"code": "Ergebnis", "text": "Ergebnis", "values": [str(i) for i in range(7)], "valueTexts": MEASURES},
+]}
+AREAS = ["Schweiz", "- Zürich", ">> Bezirk Affoltern", "...... 1 Aeugst am Albis", "...... 2 Affoltern am Albis",
+         "- Bern / Berne", ">> Verwaltungskreis Bern-Mittelland", "......0351 Bern", "- Graubünden / Grigioni / Grischun",
+         ">> Region Albula", "......3506 Albula/Alvra"]
+REAL_MUNI_META = {"title": "Volksabstimmungen (Ergebnisse Ebene Gemeinde seit 1960)", "variables": [
+    {"code": "Kanton (-) / Bezirk (>>) / Gemeinde (......)", "text": "Kanton (-) / Bezirk (>>) / Gemeinde (......)",
+     "values": [f"a{i}" for i in range(len(AREAS))], "valueTexts": AREAS},
+    {"code": "Datum und Vorlage", "text": "Datum und Vorlage", "values": ["v1", "v2", "v3"], "valueTexts": VOTES},
+    {"code": "Ergebnis", "text": "Ergebnis", "values": [str(i) for i in range(7)], "valueTexts": MEASURES},
+]}
+
+
+def fake_pxweb(meta, value_fn):
+    """Return a post_json replacement that answers any query with json-stat2 built from `value_fn(coords)`."""
+    ids = [v["code"] for v in meta["variables"]]
+    texts = {v["code"]: dict(zip(v["values"], v["valueTexts"])) for v in meta["variables"]}
+
+    def post(url, body, **kw):
+        sel = {q["code"]: q["selection"]["values"] for q in body["query"]}
+        assert body["response"]["format"] == "json-stat2"
+        return {
+            "id": ids, "size": [len(sel[i]) for i in ids],
+            "dimension": {i: {"category": {"index": {c: n for n, c in enumerate(sel[i])},
+                                           "label": {c: texts[i][c] for c in sel[i]}}} for i in ids},
+            "value": [value_fn(dict(zip(ids, combo))) for combo in itertools.product(*[sel[i] for i in ids])],
+        }
+    return post
+
+
+class RealLayout(unittest.TestCase):
+    def test_roles_for_real_tables(self):
+        c = bfs_px.resolve_roles(REAL_CANTON_META)
+        self.assertEqual({k: v["code"] for k, v in c.items()},
+                         {"canton": "Kanton", "vote": "Datum und Vorlage", "measure": "Ergebnis"})
+        m = bfs_px.resolve_roles(REAL_MUNI_META)
+        self.assertEqual(set(m), {"area", "vote", "measure"})
+        self.assertEqual(bfs_px.pick_measures(m["measure"]), {"turnout": "2", "yes": "5"})
+
+    def test_area_index_walks_hierarchy(self):
+        idx = bfs_px.area_index(REAL_MUNI_META["variables"][0])
+        self.assertEqual(idx["a3"], ("ZH", "1", "Aeugst am Albis"))
+        self.assertEqual(idx["a7"], ("BE", "351", "Bern"))           # leading zeros stripped
+        self.assertEqual(idx["a10"], ("GR", "3506", "Albula/Alvra"))
+        self.assertEqual(len(idx), 4)                                  # no districts, no cantons, no Schweiz
+
+    def test_canton_labels_with_slashes(self):
+        for label, code in [("Bern / Berne", "BE"), ("- Freiburg / Fribourg", "FR"),
+                            ("Graubünden / Grigioni / Grischun", "GR"), ("- Wallis / Valais", "VS")]:
+            self.assertEqual(canton_code(label), code)
+
+    def test_end_to_end_with_mocked_server(self):
+        def canton_value(c):
+            return {"2": 41.5, "5": 52.0 if c["Kanton"] == "0" else 60.0 + int(c["Kanton"]) % 7}.get(c["Ergebnis"], 1000)
+
+        def muni_value(c):
+            return {"2": 55.0, "5": 48.0 + int(c["Kanton (-) / Bezirk (>>) / Gemeinde (......)"][1:])}.get(c["Ergebnis"], 10)
+
+        store = Store()
+        metas = {bfs_px.CANTON_TABLE: REAL_CANTON_META, bfs_px.MUNI_TABLE: REAL_MUNI_META}
+        with mock.patch.object(bfs_px, "fetch_table_meta", side_effect=lambda t: metas[t]):
+            with mock.patch.object(bfs_px, "post_json", side_effect=fake_pxweb(REAL_CANTON_META, canton_value)):
+                bfs_px.load_cantons(store, max_cells=10)  # tiny limit forces chunking
+            with mock.patch.object(bfs_px, "post_json", side_effect=fake_pxweb(REAL_MUNI_META, muni_value)):
+                bfs_px.load_municipalities(store, max_cells=40, since=None)
+
+        self.assertEqual(sorted(store.votes), ["20230618-1", "20260614-1", "20260614-2"])
+        klima = next(v for v in store.votes.values() if v["date"] == "2023-06-18")
+        self.assertEqual((klima["yes"], klima["turnout"], klima["accepted"]), (52.0, 41.5, True))
+        self.assertEqual(klima["title"]["de"], "Klimagesetz")
+        cants = store.cantons[klima["id"]]
+        self.assertEqual(set(cants), {"ZH", "BE", "FR", "GR"})   # slash labels resolved, 'Schweiz' excluded
+        munis = store.munis["ZH"]["results"][klima["id"]]
+        self.assertEqual(set(munis), {"1", "2"})
+        self.assertEqual(store.munis["BE"]["names"]["351"], "Bern")
+        self.assertEqual(store.munis["GR"]["names"]["3506"], "Albula/Alvra")
+        # every one of the 3 votes has results for all 4 municipalities (title matching worked per date)
+        for v in store.votes.values():
+            self.assertEqual(sum(len(store.munis[c]["results"][v["id"]]) for c in ("ZH", "BE", "GR")), 4)
+
+    def test_unknown_layout_error_is_helpful(self):
+        meta = json.loads(json.dumps(REAL_MUNI_META))
+        meta["variables"][0]["valueTexts"] = ["Schweiz"] * len(meta["variables"][0]["values"])
+        with mock.patch.object(bfs_px, "fetch_table_meta", return_value=meta):
+            with self.assertRaises(SystemExit) as cm:
+                bfs_px.load_municipalities(Store())
+        self.assertIn("No municipality rows recognised", str(cm.exception))
 
 
 class StoreAndDemo(unittest.TestCase):

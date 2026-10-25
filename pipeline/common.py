@@ -49,6 +49,7 @@ NATIONAL_LABELS = {"schweiz", "suisse", "svizzera", "ch", "switzerland", "total"
 
 def norm_label(s: str) -> str:
     s = re.sub(r"^[\.\-\s>]+", "", str(s)).strip().lower()
+    s = re.sub(r"\s*/\s*", "/", s)  # 'Bern / Berne' -> 'bern/berne'
     s = re.sub(r"\s+", " ", s)
     return s
 
@@ -68,6 +69,10 @@ def canton_code(label_or_code: str | int | None) -> str | None:
     key = norm_label(str(label_or_code))
     if key in _CANTON_LOOKUP:
         return _CANTON_LOOKUP[key]
+    if "/" in key:  # bilingual labels: try each part ('graubünden/grigioni/grischun')
+        for part in key.split("/"):
+            if part.strip() in _CANTON_LOOKUP:
+                return _CANTON_LOOKUP[part.strip()]
     # labels such as "- Zürich" or "Zürich (ZH)"
     m = re.search(r"\(([A-Za-z]{2})\)", str(label_or_code))
     if m and m.group(1).upper() in CANTON_BY_CODE:
