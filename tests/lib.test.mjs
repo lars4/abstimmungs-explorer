@@ -102,3 +102,12 @@ test('every canton has a well-formed coat of arms file', () => {
     assert.ok(!/<script|onload=|onclick=|foreignObject|javascript:/i.test(svg), 'unsafe svg ' + c);
   }
 });
+
+test('coat of arms SVGs use only paths, no <polygon>/<polyline> with glued coordinates', () => {
+  // Some browsers mis-parse `points="103.22-174.97 ..."` (numbers separated only by a minus sign) and
+  // silently drop the shape: white shields for SO/ZG. Polygons were converted to explicit paths.
+  for (const c of CANTON_CODES) {
+    const svg = fs.readFileSync(`web/assets/arms/${c}.svg`, 'utf8');
+    assert.ok(!/<polygon|<polyline/i.test(svg), c + ' still contains a polygon/polyline');
+  }
+});

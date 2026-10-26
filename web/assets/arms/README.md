@@ -10,3 +10,5 @@ files outside this project, check those pages. Cantonal coats of arms are offici
 for identification/information only, not in a way that suggests official endorsement.
 
 Modification: a dark outline (`data-outline` path, ~1.7 % of the shield width) was added on top of each shield and the viewBox widened accordingly, so the shapes stay readable at 20-26 px on light backgrounds. Colours and charges are unchanged.
+
+Modification 2: `<polygon>` elements were converted to `<path>` elements with explicit `x,y` separators. The originals wrote coordinates glued together (`103.22-174.97`), which some browsers do not parse, so e.g. the red/blue fields of SO and ZG were missing there. The shapes are pixel-identical in Chromium.
