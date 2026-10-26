@@ -45,10 +45,10 @@ export function tileMap(container, values, opts = {}) {
       role: opts.onSelect ? 'button' : null, 'aria-label': `${opts.names?.[code] || code}: ${v ? fmtPct(v.yes) : 'keine Daten'}` });
     const fill = yesColor(v?.yes);
     g.append(svg('rect', { x, y, width: size, height: size, rx: 7, fill }));
-    const aw = 19.5, ah = aw * 493 / 406;
-    g.append(svg('image', { href: armsUrl(code), x: x + (size - aw) / 2, y: y + 4, width: aw, height: ah, class: 't-arms' }));
-    g.append(svg('text', { x: x + size / 2, y: y + 41, class: 't-code', fill: textOn(v?.yes) }, [document.createTextNode(code)]));
-    g.append(svg('text', { x: x + size / 2, y: y + 55, class: 't-val', fill: textOn(v?.yes) },
+    const aw = 22, ah = aw * 493 / 406;
+    g.append(svg('image', { href: armsUrl(code), x: x + (size - aw) / 2, y: y + 3, width: aw, height: ah, class: 't-arms' }));
+    g.append(svg('text', { x: x + size / 2, y: y + 43, class: 't-code', fill: textOn(v?.yes) }, [document.createTextNode(code)]));
+    g.append(svg('text', { x: x + size / 2, y: y + 57, class: 't-val', fill: textOn(v?.yes) },
       [document.createTextNode(v ? v.yes.toFixed(1).replace('.', ',') : '–')]));
     g.addEventListener('mousemove', (e) => tip.show(opts.tipHtml ? opts.tipHtml(code, v) : `<b>${opts.names?.[code] || code}</b><br>${v ? fmtPct(v.yes) : '–'}`, e.clientX, e.clientY));
     g.addEventListener('mouseleave', tip.hide);
