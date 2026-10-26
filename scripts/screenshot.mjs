@@ -13,7 +13,7 @@ try { ({ chromium } = require('playwright')); } catch { ({ chromium } = require(
 const root = path.resolve('web');
 const out = path.resolve(process.argv[2] || 'docs');
 fs.mkdirSync(out, { recursive: true });
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' };
 const server = http.createServer((req, res) => {
   const p = path.join(root, decodeURIComponent(req.url.split('?')[0]).replace(/^\/$/, '/index.html'));
   if (!p.startsWith(root) || !fs.existsSync(p)) { res.writeHead(404); return res.end('nf'); }
@@ -39,12 +39,25 @@ await page.click('table.list tr.row');
 await page.waitForSelector('.tilemap');
 await page.click('.tile >> nth=0');
 await page.waitForSelector('#muni ol.rank');
+await page.waitForTimeout(500);
+const brokenVote = await page.$$eval('img, svg image', (els) => els.filter((e) => e.tagName === 'IMG' && !(e.complete && e.naturalWidth > 0)).map((e) => e.src));
+if (brokenVote.length) problems.push('broken images on vote page: ' + brokenVote.join(', '));
 await page.screenshot({ path: path.join(out, 'screenshot-vote.png'), fullPage: true });
 
 await page.goto(base + '#/trends');
 await page.waitForSelector('.linechart path');
 await page.mouse.move(600, 520);
 await page.screenshot({ path: path.join(out, 'screenshot-trends.png') });
+
+// every <img> must actually have loaded (catches wrong paths / MIME types / broken SVGs)
+await page.waitForTimeout(500);
+await page.goto(base + '#/trends');
+await page.waitForSelector('.chip-btn img.arms');
+await page.waitForTimeout(500);
+const broken = await page.$$eval('img', (imgs) => imgs.filter((i) => !(i.complete && i.naturalWidth > 0)).map((i) => i.src));
+if (broken.length) problems.push('broken images: ' + broken.join(', '));
+const imgCount = await page.$$eval('img.arms', (n) => n.length);
+if (imgCount < 26) problems.push('expected 26 coats of arms on trends page, found ' + imgCount);
 
 await page.selectOption('#lang', 'en');
 await page.goto(base + '#/about');

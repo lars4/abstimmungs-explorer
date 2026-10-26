@@ -99,3 +99,13 @@ ol.rank li:hover, ol.rank li.sel { background: color-mix(in srgb, var(--accent) 
 .error { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
 pre { background: var(--bg); padding: 12px; border-radius: 8px; overflow: auto; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* coats of arms */
+img.arms{display:block;height:auto;aspect-ratio:406/493;object-fit:contain;flex:none;filter:drop-shadow(0 1px 1.5px rgba(19,35,58,.25))}
+img.arms.xs{width:17px} img.arms.sm{width:24px}
+.t-arms{pointer-events:none}
+.cn{display:flex;gap:8px;align-items:center;min-width:0}
+.cn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hd-arms{display:flex;gap:10px;align-items:center}
+.chip-btn{display:inline-flex;gap:6px;align-items:center}
+.tip img.tipimg{width:22px;float:left;margin:0 8px 2px 0}

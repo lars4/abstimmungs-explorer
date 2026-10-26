@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   CANTON_CODES, TILE_GRID, yesColor, filterVotes, cantonSeries, movingAverage, cantonMajority,
-  rankCantons, niceTicks, municipalityRows, municipalitySeries, fmtPct, fmtSigned, dateToYear,
+  rankCantons, armsUrl, niceTicks, municipalityRows, municipalitySeries, fmtPct, fmtSigned, dateToYear,
 } from '../web/js/lib.js';
 
 const votes = [
@@ -89,5 +89,16 @@ test('generated demo data matches what the app expects', { skip: !fs.existsSync(
       assert.ok(CANTON_CODES.includes(code));
       assert.ok(r[0] >= 0 && r[0] <= 100);
     }
+  }
+});
+
+test('every canton has a well-formed coat of arms file', () => {
+  assert.equal(armsUrl('ZH'), 'assets/arms/ZH.svg');
+  for (const c of CANTON_CODES) {
+    const f = `web/assets/arms/${c}.svg`;
+    assert.ok(fs.existsSync(f), 'missing ' + f);
+    const svg = fs.readFileSync(f, 'utf8');
+    assert.ok(svg.startsWith('<svg') && svg.includes('viewBox'), 'bad svg ' + c);
+    assert.ok(!/<script|onload=|onclick=|foreignObject|javascript:/i.test(svg), 'unsafe svg ' + c);
   }
 });

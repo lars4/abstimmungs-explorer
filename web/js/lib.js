@@ -23,6 +23,9 @@ export const TILE_GRID = {
   GE:[0,5],
 };
 
+/** Path of a canton's coat of arms (SVG, ~406:493 aspect). */
+export const armsUrl = (code) => `assets/arms/${code}.svg`;
+
 export const fmtPct = (x, d = 1) => (x == null || Number.isNaN(x) ? '–' : x.toFixed(d).replace('.', ',') + ' %');
 export const fmtSigned = (x, d = 1) => (x == null ? '–' : (x > 0 ? '+' : x < 0 ? '−' : '±') + Math.abs(x).toFixed(d).replace('.', ',') + ' pp');
 

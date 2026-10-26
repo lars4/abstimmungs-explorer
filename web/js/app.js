@@ -1,6 +1,6 @@
 import {
   CANTON_CODES, CANTON_NAMES, fmtPct, fmtSigned, yesColor, textOn, voteTitle, filterVotes, cantonSeries,
-  movingAverage, cantonMajority, rankCantons, municipalityRows, municipalitySeries, esc,
+  movingAverage, cantonMajority, rankCantons, municipalityRows, municipalitySeries, esc, armsUrl,
 } from './lib.js';
 import { tileMap, lineChart, sparkline, SERIES_COLORS } from './charts.js';
 import { t, getLang, setLang } from './i18n.js';
@@ -23,6 +23,7 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
+const armsImg = (code, size = 'xs') => h('img', { class: 'arms ' + size, src: armsUrl(code), alt: '', loading: 'lazy', decoding: 'async' });
 const names = () => CANTON_NAMES[getLang()] || CANTON_NAMES.de;
 const kindLabel = (k) => ({ initiative: t('initiative'), referendum: t('referendum'), counter: t('counter') }[k] || k || '');
 
@@ -97,15 +98,15 @@ async function viewVote(id) {
       h('div', { class: 'card' }, h('h3', {}, t('rank')),
         h('div', { class: 'seg' }, ['yes', 'delta'].map((k) => h('button', { class: (state.rankBy || 'yes') === k ? 'on' : '', onClick: () => { state.rankBy = k; render(); } }, t('by_' + k)))),
         h('ol', { class: 'rank' }, ranking.map((r) => h('li', { onClick: () => { state.selCanton = r.code; render(); }, class: r.code === sel ? 'sel' : '' },
-          h('span', { class: 'cn' }, names()[r.code]),
+          h('span', { class: 'cn' }, armsImg(r.code), h('span', {}, names()[r.code])),
           h('span', { class: 'bar' }, h('i', { style: `width:${r.yes}%;background:${yesColor(r.yes)}` })),
           h('span', { class: 'rv' }, fmtPct(r.yes)), h('span', { class: 'rd muted' }, fmtSigned(r.delta))))))),
-    h('div', { class: 'card', id: 'muni-card' }, h('h3', {}, t('municipalities') + (sel ? ' · ' + names()[sel] : '')), muniBox));
+    h('div', { class: 'card', id: 'muni-card' }, h('h3', { class: 'hd-arms' }, sel ? armsImg(sel, 'sm') : null, t('municipalities') + (sel ? ' · ' + names()[sel] : '')), muniBox));
 
   queueMicrotask(() => {
     tileMap(mapBox, values, { names: names(), selected: sel, label: t('canton_map'),
       onSelect: (c) => { state.selCanton = c; render({ keepScroll: true }); },
-      tipHtml: (c, r) => `<b>${esc(names()[c])}</b><br>${t('yes')}: ${r ? fmtPct(r.yes) : '–'}<br>${t('turnout')}: ${r ? fmtPct(r.turnout) : '–'}` });
+      tipHtml: (c, r) => `<img class="arms tipimg" src="${armsUrl(c)}" alt=""><b>${esc(names()[c])}</b><br>${t('yes')}: ${r ? fmtPct(r.yes) : '–'}<br>${t('turnout')}: ${r ? fmtPct(r.turnout) : '–'}` });
     if (sel) fillMuni(muniBox, sel, v);
   });
   return page;
@@ -124,7 +125,7 @@ async function fillMuni(box, code, vote) {
   rows.sort((a, b) => b.yes - a.yes);
   const list = (title, arr) => h('div', {}, h('h4', {}, title), h('ol', { class: 'rank' }, arr.map((r) => {
     const series = municipalitySeries(file, state.votes, r.bfs).map((p) => ({ date: p.date, value: p.value }));
-    return h('li', {}, h('span', { class: 'cn' }, r.name), h('span', { class: 'bar' }, h('i', { style: `width:${r.yes}%;background:${yesColor(r.yes)}` })),
+    return h('li', {}, h('span', { class: 'cn' }, h('span', {}, r.name)), h('span', { class: 'bar' }, h('i', { style: `width:${r.yes}%;background:${yesColor(r.yes)}` })),
       h('span', { class: 'rv' }, fmtPct(r.yes)), h('span', { class: 'rd muted' }, fmtSigned(r.delta)), h('span', { class: 'sp' }, sparkline(series)));
   })));
   box.replaceChildren(h('p', { class: 'muted' }, `${rows.length} ${t('municipalities')} · ${t('muni_hint')}`),
@@ -139,7 +140,7 @@ function viewTrends() {
     const on = T.sel.includes(c);
     const col = on ? SERIES_COLORS[T.sel.indexOf(c) % SERIES_COLORS.length] : null;
     return h('button', { class: 'chip-btn' + (on ? ' on' : ''), style: on ? `--c:${col}` : null, 'aria-pressed': on, title: names()[c],
-      onClick: () => { T.sel = on ? T.sel.filter((x) => x !== c) : [...T.sel, c].slice(-6); render({ keepScroll: true }); } }, c);
+      onClick: () => { T.sel = on ? T.sel.filter((x) => x !== c) : [...T.sel, c].slice(-6); render({ keepScroll: true }); } }, armsImg(c), c);
   }));
   const controls = h('div', { class: 'controls' },
     h('div', { class: 'seg' }, ['yes', 'delta'].map((m) => h('button', { class: T.mode === m ? 'on' : '', onClick: () => { T.mode = m; render({ keepScroll: true }); } }, t('mode_' + m)))),
@@ -181,7 +182,8 @@ function viewAbout() {
       h('li', {}, 'Ja-Anteil = Ja-Stimmen / gültige Stimmen. Der Kartogramm-Modus („Tile Grid“) zeigt jeden Kanton gleich gross.'),
       h('li', {}, 'Gemeindedaten folgen dem Gebietsstand der Quelle; durch Fusionen sind Zeitreihen einzelner Gemeinden nicht immer lückenlos.'),
       h('li', {}, 'Abweichung = Ja-Anteil des Kantons minus nationaler Ja-Anteil (Prozentpunkte, pp).'),
-      h('li', {}, 'Kantonale und kommunale Vorlagen werden nicht dargestellt; Fokus sind eidgenössische Abstimmungen.')),
+      h('li', {}, 'Kantonale und kommunale Vorlagen werden nicht dargestellt; Fokus sind eidgenössische Abstimmungen.'),
+      h('li', {}, 'Kantonswappen: Wikimedia Commons, Serie «Wappen … matt» (siehe assets/arms/README.md).')),
     h('p', { class: 'muted' }, `${t('built')}: ${state.meta.built}`));
 }
 

@@ -1,5 +1,5 @@
 // Dependency-free SVG charts.
-import { TILE_GRID, yesColor, textOn, niceTicks, dateToYear, fmtPct } from './lib.js';
+import { TILE_GRID, yesColor, textOn, niceTicks, dateToYear, fmtPct, armsUrl } from './lib.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 export const SERIES_COLORS = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#56B4E9'];
@@ -45,8 +45,10 @@ export function tileMap(container, values, opts = {}) {
       role: opts.onSelect ? 'button' : null, 'aria-label': `${opts.names?.[code] || code}: ${v ? fmtPct(v.yes) : 'keine Daten'}` });
     const fill = yesColor(v?.yes);
     g.append(svg('rect', { x, y, width: size, height: size, rx: 7, fill }));
-    g.append(svg('text', { x: x + size / 2, y: y + size / 2 - 2, class: 't-code', fill: textOn(v?.yes) }, [document.createTextNode(code)]));
-    g.append(svg('text', { x: x + size / 2, y: y + size / 2 + 16, class: 't-val', fill: textOn(v?.yes) },
+    const aw = 19.5, ah = aw * 493 / 406;
+    g.append(svg('image', { href: armsUrl(code), x: x + (size - aw) / 2, y: y + 4, width: aw, height: ah, class: 't-arms' }));
+    g.append(svg('text', { x: x + size / 2, y: y + 41, class: 't-code', fill: textOn(v?.yes) }, [document.createTextNode(code)]));
+    g.append(svg('text', { x: x + size / 2, y: y + 55, class: 't-val', fill: textOn(v?.yes) },
       [document.createTextNode(v ? v.yes.toFixed(1).replace('.', ',') : '–')]));
     g.addEventListener('mousemove', (e) => tip.show(opts.tipHtml ? opts.tipHtml(code, v) : `<b>${opts.names?.[code] || code}</b><br>${v ? fmtPct(v.yes) : '–'}`, e.clientX, e.clientY));
     g.addEventListener('mouseleave', tip.hide);
