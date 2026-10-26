@@ -8,9 +8,10 @@ import json
 import pathlib
 import tempfile
 import unittest
+import urllib.error
 from unittest import mock
 
-from pipeline import bfs_px, demo, voteinfo
+from pipeline import bfs_px, common, demo, voteinfo
 from pipeline.common import canton_code, is_national
 from pipeline.store import Store
 
@@ -210,6 +211,82 @@ class RealLayout(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 bfs_px.load_municipalities(Store())
         self.assertIn("No municipality rows recognised", str(cm.exception))
+
+
+
+class FakeResponse:
+    def __init__(self, body: bytes):
+        self.body = body
+    def read(self):
+        return self.body
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+class RateLimiting(unittest.TestCase):
+    def test_429_waits_retry_after_then_succeeds(self):
+        calls, sleeps = [], []
+
+        def urlopen(req, timeout=0):
+            calls.append(1)
+            if len(calls) == 1:
+                raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {"Retry-After": "7"}, None)
+            return FakeResponse(b'{"ok": true}')
+
+        with mock.patch.object(common.urllib.request, "urlopen", urlopen), \
+             mock.patch.object(common.time, "sleep", side_effect=sleeps.append), \
+             mock.patch.object(common, "MIN_INTERVAL", 0), mock.patch("sys.stderr"):
+            self.assertEqual(common.get_json("https://example.invalid/x"), {"ok": True})
+        self.assertEqual(len(calls), 2)
+        self.assertIn(7.0, sleeps)
+
+    def test_429_without_header_backs_off_and_gives_up(self):
+        sleeps = []
+
+        def urlopen(req, timeout=0):
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, None)
+
+        with mock.patch.object(common.urllib.request, "urlopen", urlopen), \
+             mock.patch.object(common.time, "sleep", side_effect=sleeps.append), \
+             mock.patch.object(common, "MIN_INTERVAL", 0), mock.patch("sys.stderr"):
+            with self.assertRaises(RuntimeError):
+                common.get_json("https://example.invalid/x", retries=4)
+        self.assertEqual([x for x in sleeps if x >= 5], [5.0, 10.0, 20.0, 40.0])
+
+    def test_non_retryable_error_is_raised_immediately(self):
+        def urlopen(req, timeout=0):
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+        with mock.patch.object(common.urllib.request, "urlopen", urlopen), mock.patch.object(common, "MIN_INTERVAL", 0):
+            with self.assertRaises(urllib.error.HTTPError):
+                common.get_json("https://example.invalid/x")
+
+    def test_chunk_size_is_halved_when_server_rejects(self):
+        meta = json.loads(json.dumps(REAL_CANTON_META))
+        n = 600
+        meta["variables"][1]["values"] = [f"v{i}" for i in range(n)]
+        meta["variables"][1]["valueTexts"] = [f"2000-01-{1 + i % 28:02d} Vorlage {i}" for i in range(n)]
+        roles = bfs_px.resolve_roles(meta)
+        measures = bfs_px.pick_measures(roles["measure"])
+        inner = fake_pxweb(meta, lambda c: 1.0)
+        sizes = []
+
+        def limited(url, body, **kw):
+            cells = 1
+            for q in body["query"]:
+                cells *= len(q["selection"]["values"])
+            sizes.append(cells)
+            if cells > 3000:
+                raise urllib.error.HTTPError(url, 403, "too many values", {}, None)
+            return inner(url, body)
+
+        with mock.patch.object(bfs_px, "post_json", limited), mock.patch("sys.stderr"):
+            responses = list(bfs_px._post_chunks("https://example.invalid/t", meta, roles, measures, 16000))
+        covered = sum(r["size"][1] for r in responses)       # vote dimension is the 2nd dimension
+        self.assertEqual(covered, n)                          # every vote fetched exactly once
+        self.assertEqual(len(responses), 3)                   # 200 + 200 + 200 votes after halving
+        self.assertGreater(len(sizes), len(responses))        # rejected attempts happened first
 
 
 class StoreAndDemo(unittest.TestCase):

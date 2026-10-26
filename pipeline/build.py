@@ -11,7 +11,7 @@ import argparse
 import json
 import sys
 
-from . import bfs_px, demo, voteinfo
+from . import bfs_px, common, demo, voteinfo
 from .common import DATA_DIR
 from .store import Store
 
@@ -35,7 +35,8 @@ def main(argv=None) -> int:
     live.add_argument("--muni-since", type=int, default=1990, help="municipality results from this year on")
     live.add_argument("--no-municipalities", action="store_true")
     live.add_argument("--no-voteinfo", action="store_true", help="skip latest-vote gap filling")
-    live.add_argument("--max-cells", type=int, default=20000, help="PxWeb cells per request")
+    live.add_argument("--max-cells", type=int, default=50000, help="PxWeb cells per request (halved automatically if rejected)")
+    live.add_argument("--delay", type=float, default=None, help="seconds between requests (default 1.5)")
     live.add_argument("--map", action="append", default=[], metavar="ROLE=CODE",
                       help="override PxWeb variable role (vote, canton, muni, measure)")
     for p in (live, sub.choices["demo"]):
@@ -51,6 +52,8 @@ def main(argv=None) -> int:
                       + (f"all: {v['valueTexts']}" if len(v['values']) <= 12 else f"e.g. {v['valueTexts'][:3]}"))
         return 0
 
+    if getattr(args, "delay", None) is not None:
+        common.MIN_INTERVAL = args.delay
     store = Store()
     if args.cmd == "demo":
         demo.generate(store)

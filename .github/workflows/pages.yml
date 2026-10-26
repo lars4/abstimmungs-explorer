@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Fetch live data
-        run: python -m pipeline.build live
+        run: python -m pipeline.build live --delay 2
       - name: Sanity check
         run: |
           python - <<'EOF'

@@ -62,6 +62,10 @@ python3 -m pipeline.build live --map vote="Datum und Vorlage" --map measure=Erge
 
 The deploy workflow refuses to publish demo data or a suspiciously small dataset.
 
+The BFS API rate-limits clients (HTTP 429). Requests are spaced out (`--delay`, default 1.5 s), the server's
+`Retry-After` is honoured, and chunk sizes are halved automatically if the server rejects a request as too large.
+A full run takes a few minutes.
+
 ## How it works
 
 ```

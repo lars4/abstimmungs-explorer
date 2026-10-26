@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import pathlib
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -84,13 +85,39 @@ def is_national(label: str) -> bool:
     return norm_label(label) in NATIONAL_LABELS
 
 
+# The BFS PxWeb API rate-limits per client (HTTP 429). Space requests out and, when throttled
+# anyway, wait as long as the server asks (Retry-After) instead of hammering it.
+MIN_INTERVAL = 1.5      # seconds between two requests (set via `--delay`)
+MAX_WAIT = 120          # never sleep longer than this for one retry
+_last_request = [0.0]
+
+
+def _throttle() -> None:
+    wait = _last_request[0] + MIN_INTERVAL - time.monotonic()
+    if wait > 0:
+        time.sleep(wait)
+    _last_request[0] = time.monotonic()
+
+
+def _retry_after(err: urllib.error.HTTPError, attempt: int) -> float:
+    """Seconds to wait before retrying a throttled / failed request."""
+    try:
+        header = err.headers.get("Retry-After") if err.headers else None
+        if header:
+            return min(MAX_WAIT, max(1.0, float(header)))
+    except (TypeError, ValueError):
+        pass
+    return min(MAX_WAIT, 5.0 * 2 ** attempt)  # 5, 10, 20, 40, 80, 120 ...
+
+
 def request(url: str, data: bytes | None = None, headers: dict | None = None,
-            retries: int = 4, timeout: int = 90) -> bytes:
+            retries: int = 8, timeout: int = 90) -> bytes:
     hdrs = {"User-Agent": USER_AGENT, "Accept": "application/json, */*"}
     if headers:
         hdrs.update(headers)
     last: Exception | None = None
     for attempt in range(retries):
+        _throttle()
         try:
             req = urllib.request.Request(url, data=data, headers=hdrs)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -98,12 +125,15 @@ def request(url: str, data: bytes | None = None, headers: dict | None = None,
         except urllib.error.HTTPError as e:
             last = e
             if e.code in (429, 500, 502, 503, 504):
-                time.sleep(2 ** attempt * 2)
+                delay = _retry_after(e, attempt)
+                print(f"  HTTP {e.code} from server, waiting {delay:.0f}s "
+                      f"(attempt {attempt + 1}/{retries})", file=sys.stderr, flush=True)
+                time.sleep(delay)
                 continue
             raise
         except (urllib.error.URLError, TimeoutError) as e:
             last = e
-            time.sleep(2 ** attempt)
+            time.sleep(min(MAX_WAIT, 2 ** attempt))
     raise RuntimeError(f"Request failed after {retries} attempts: {url}: {last}")
 
 

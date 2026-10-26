@@ -19,6 +19,8 @@ from __future__ import annotations
 import difflib
 import itertools
 import re
+import sys
+import urllib.error
 from collections import defaultdict
 from typing import Iterator
 
@@ -205,7 +207,35 @@ def _group(js: dict, roles: dict, measures: dict, area_code: str) -> dict:
 
 
 # --------------------------------------------------------------------------- loaders
-def load_cantons(store: Store, max_cells: int = 20000, since: int | None = None,
+def _post_chunks(url: str, meta: dict, roles: dict, measures: dict, max_cells: int,
+                 only: set[str] | None = None, restrict: dict | None = None) -> Iterator[dict]:
+    """POST the table query in chunks of votes and yield each json-stat2 response.
+
+    If the server rejects a chunk as too large (HTTP 400/403/413) the chunk size is halved and
+    the same votes are retried, so a too-optimistic --max-cells only costs a few extra requests.
+    Throttling / retries for HTTP 429 happen inside common.request.
+    """
+    vote_var = roles["vote"]
+    pending = [v for v in vote_var["values"] if not only or v in only]
+    total = len(pending)
+    while pending:
+        body = next(query_chunks(meta, roles, measures, vote_var, max_cells, set(pending), restrict))
+        try:
+            js = post_json(url, body)
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 403, 413) and max_cells > 2000:
+                max_cells //= 2
+                print(f"  server rejected the chunk (HTTP {e.code}); retrying with max-cells={max_cells}",
+                      file=sys.stderr, flush=True)
+                continue
+            raise
+        used = set(next(q for q in body["query"] if q["code"] == vote_var["code"])["selection"]["values"])
+        pending = [v for v in pending if v not in used]
+        print(f"  {total - len(pending)}/{total} votes", file=sys.stderr, flush=True)
+        yield js
+
+
+def load_cantons(store: Store, max_cells: int = 50000, since: int | None = None,
                  override: dict | None = None) -> None:
     meta = fetch_table_meta(CANTON_TABLE)
     roles = resolve_roles(meta, override)
@@ -213,8 +243,7 @@ def load_cantons(store: Store, max_cells: int = 20000, since: int | None = None,
     measures = pick_measures(roles["measure"])
     only = _votes_since(roles["vote"], since)
     ids: dict[str, str] = {}
-    for body in query_chunks(meta, roles, measures, roles["vote"], max_cells, only):
-        js = post_json(BASE.format(table=CANTON_TABLE), body)
+    for js in _post_chunks(BASE.format(table=CANTON_TABLE), meta, roles, measures, max_cells, only):
         grouped = _group(js, roles, measures, area_var["code"])
         for (vote, canton), val in sorted(grouped.items(), key=lambda kv: kv[0][0][1]):
             vcode, vlabel = vote
@@ -246,7 +275,7 @@ def _match_vote(store: Store, by_key: dict, by_date: dict, date: str | None, tit
     return next((i for i, t in candidates if t == best[0]), None) if best else None
 
 
-def load_municipalities(store: Store, max_cells: int = 20000, since: int | None = 1990,
+def load_municipalities(store: Store, max_cells: int = 50000, since: int | None = 1990,
                         override: dict | None = None) -> None:
     meta = fetch_table_meta(MUNI_TABLE)
     roles = resolve_roles(meta, override)
@@ -267,9 +296,8 @@ def load_municipalities(store: Store, max_cells: int = 20000, since: int | None 
         by_date.setdefault(v["date"], []).append((v["id"], v["title"].get("de", "")))
 
     unmatched = 0
-    for body in query_chunks(meta, roles, measures, roles["vote"], max_cells, only,
-                             restrict={area["code"]: list(index)}):
-        js = post_json(BASE.format(table=MUNI_TABLE), body)
+    for js in _post_chunks(BASE.format(table=MUNI_TABLE), meta, roles, measures, max_cells, only,
+                           restrict={area["code"]: list(index)}):
         for (vote, acell), val in _group(js, roles, measures, area["code"]).items():
             info = index.get(acell[0])
             if not info:
